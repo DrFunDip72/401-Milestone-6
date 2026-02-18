@@ -1,19 +1,25 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Home, TrendingUp, User } from "lucide-react";
+import { Menu, X, Home, TrendingUp, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navLinks = [
   { to: "/", label: "Home", icon: Home },
   { to: "/trending", label: "Trending Topics", icon: TrendingUp },
-  { to: "/profile", label: "Profile", icon: User },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const { isLoggedIn, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    setMenuOpen(false);
+  };
 
   return (
     <div className="min-h-screen">
@@ -47,9 +53,37 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   {label}
                 </Link>
               ))}
-              <Link to="/signup">
-                <Button size="sm">Sign Up</Button>
-              </Link>
+              {isLoggedIn ? (
+                <>
+                  <Link
+                    to="/profile"
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      location.pathname === "/profile"
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    <User className="h-4 w-4" />
+                    Profile
+                  </Link>
+                  <Button size="sm" variant="ghost" onClick={handleLogout}>
+                    <LogOut className="h-4 w-4 mr-1" />
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link to="/login">
+                    <Button size="sm" variant="ghost">
+                      Login
+                    </Button>
+                  </Link>
+                  <Link to="/signup">
+                    <Button size="sm">Sign Up</Button>
+                  </Link>
+                </>
+              )}
             </nav>
             <ThemeToggle />
             <Button
@@ -97,14 +131,43 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   {label}
                 </Link>
               ))}
+              {isLoggedIn ? (
+                <>
+                  <Link
+                    to="/profile"
+                    onClick={() => setMenuOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors",
+                      location.pathname === "/profile"
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    <User className="h-5 w-5" />
+                    Profile
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    className="justify-start mt-4"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="h-5 w-5 mr-3" />
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <div className="flex flex-col gap-2 mt-4">
+                  <Link to="/login" onClick={() => setMenuOpen(false)}>
+                    <Button variant="outline" className="w-full">
+                      Login
+                    </Button>
+                  </Link>
+                  <Link to="/signup" onClick={() => setMenuOpen(false)}>
+                    <Button className="w-full">Sign Up</Button>
+                  </Link>
+                </div>
+              )}
             </nav>
-            <Link
-              to="/signup"
-              onClick={() => setMenuOpen(false)}
-              className="mt-4"
-            >
-              <Button className="w-full">Sign Up</Button>
-            </Link>
           </aside>
         </>
       )}

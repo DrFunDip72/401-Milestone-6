@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,16 +13,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/useToast";
-import { useAnonymousAuth } from "@/hooks/useAnonymousAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { UTAH_COUNTIES } from "@/data/mockData";
 import { supabase } from "@/lib/supabase";
 
 interface UserProfile {
-  User_ID: string;
-  Name: string | null;
-  Email: string | null;
-  DOB: string | null;
-  County_ID: number | null;
+  user_id: string;
+  name: string | null;
+  email: string | null;
+  dob: string | null;
+  county_id: number | null;
 }
 
 export function Profile() {
@@ -31,52 +32,60 @@ export function Profile() {
   const [dob, setDob] = useState("");
   const [county, setCounty] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const { user, loading: authLoading } = useAnonymousAuth();
+  const { user, isLoggedIn, isLoading: authLoading, refreshUser } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!authLoading && !isLoggedIn) {
+      navigate("/login", { replace: true });
+      return;
+    }
+  }, [authLoading, isLoggedIn, navigate]);
+
+  useEffect(() => {
+    if (!user?.user_id) {
+      setLoading(false);
+      return;
+    }
 
     const fetchProfile = async () => {
       const { data, error } = await supabase
         .from("User")
-        .select("User_ID, Name, Email, DOB, County_ID")
-        .eq("User_ID", user.id)
+        .select("user_id, name, email, dob, county_id")
+        .eq("user_id", user.user_id)
         .maybeSingle();
 
       if (error) {
         console.error("Failed to fetch profile:", error);
+        setLoading(false);
         return;
       }
 
       const profile = data as UserProfile | null;
       if (profile) {
-        setName(profile.Name ?? "");
-        setEmail(profile.Email ?? "");
-        setDob(profile.DOB ?? "");
-        if (profile.County_ID) {
+        setName(profile.name ?? "");
+        setEmail(profile.email ?? "");
+        setDob(profile.dob ?? "");
+        if (profile.county_id) {
           const { data: countyData } = await supabase
-            .from("County")
-            .select("County_Name")
-            .eq("County_ID", profile.County_ID)
+            .from("county")
+            .select("county_name")
+            .eq("county_id", profile.county_id)
             .single();
-          setCounty(countyData?.County_Name ?? "");
+          setCounty(countyData?.county_name ?? "");
         }
       }
+      setLoading(false);
     };
 
     fetchProfile();
-  }, [user?.id]);
+  }, [user?.user_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id) {
-      toast({
-        title: "Error",
-        description: "Please wait for authentication to complete.",
-      });
-      return;
-    }
+    if (!user?.user_id) return;
 
     setSaving(true);
 
@@ -84,31 +93,32 @@ export function Profile() {
       let countyId: number | null = null;
       if (county) {
         const { data: countyData } = await supabase
-          .from("County")
-          .select("County_ID")
-          .eq("County_Name", county)
+          .from("county")
+          .select("county_id")
+          .eq("county_name", county)
           .maybeSingle();
-        countyId = countyData?.County_ID ?? null;
+        countyId = countyData?.county_id ?? null;
       }
+
+      const updates: Record<string, unknown> = {
+        name: name || null,
+        email: email || null,
+        dob: dob || null,
+        county_id: countyId,
+        updated_at: new Date().toISOString(),
+      };
+      if (password) updates.password = password;
 
       const { data, error } = await supabase
         .from("User")
-        .upsert(
-          {
-            User_ID: user.id,
-            Name: name || null,
-            Email: email || null,
-            DOB: dob || null,
-            County_ID: countyId,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "User_ID" }
-        )
+        .update(updates)
+        .eq("user_id", user.user_id)
         .select()
         .single();
 
       if (error) throw error;
 
+      await refreshUser();
       toast({
         title: "Profile saved",
         description: "Your changes have been saved successfully.",
@@ -116,9 +126,9 @@ export function Profile() {
 
       if (data) {
         const profile = data as UserProfile;
-        setName(profile.Name ?? "");
-        setEmail(profile.Email ?? "");
-        setDob(profile.DOB ?? "");
+        setName(profile.name ?? "");
+        setEmail(profile.email ?? "");
+        setDob(profile.dob ?? "");
       }
     } catch (err) {
       console.error("Failed to save profile:", err);
@@ -131,10 +141,18 @@ export function Profile() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || !isLoggedIn) {
     return (
       <div className="flex justify-center items-center min-h-[200px]">
         <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-[200px]">
+        <p className="text-muted-foreground">Loading profile...</p>
       </div>
     );
   }
@@ -147,6 +165,9 @@ export function Profile() {
             <User className="h-12 w-12 text-muted-foreground" />
           </div>
           <h1 className="font-display font-semibold text-xl mt-4">Profile</h1>
+          <p className="text-sm text-muted-foreground">
+            {user?.name || user?.email || "Your account"}
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -178,12 +199,9 @@ export function Profile() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Leave blank to keep current"
                 className="mt-2"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Password change not yet implemented. Field kept for future auth.
-              </p>
             </div>
             <div>
               <Label htmlFor="dob">Date of Birth</Label>
